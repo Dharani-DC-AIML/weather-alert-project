@@ -1,7 +1,16 @@
 // src/App.jsx
+import ThinkingLoader from './ThinkingLoader'
 import { useState, useRef, useEffect } from 'react'
 import { parseQuery } from './gemini'
-import { geocode, getWeather, getLocationByIP, deriveAlerts, getHistoricalWeather, getMonthlyHistoricalStats, getWeatherCached } from './weather'
+import {
+  geocode,
+  getLocationByIP,
+  reverseGeocode,
+  deriveAlerts,
+  getHistoricalWeather,
+  getMonthlyHistoricalStats,
+  getWeatherCached
+} from './weather'
 import { supabase } from './supabaseClient'
 import {
   weatherCode,
@@ -57,10 +66,104 @@ export default function App() {
   async function handleUseLocation() {
     setLoading(true)
 
-    try {
-      const loc = await getLocationByIP()
+    function fallbackToIP() {
+      getLocationByIP()
+        .then(async loc => {
+          if (!loc.lat) {
+            setMessages(m => [
+              ...m,
+              {
+                role: 'ai',
+                text: L.locationError
+              }
+            ])
+            setLoading(false)
+            return
+          }
 
-      if (!loc.lat) {
+          await finishLocationFlow(loc)
+        })
+        .catch(() => {
+          setMessages(m => [
+            ...m,
+            {
+              role: 'ai',
+              text: L.locationError
+            }
+          ])
+          setLoading(false)
+        })
+    }
+
+    async function finishLocationFlow(loc) {
+      try {
+        const weather = await getWeatherCached(loc)
+        const c = weather.current
+        const d = weather.daily
+        const alerts = deriveAlerts(c, d)
+
+        setMessages(m => [
+          ...m,
+          {
+            role: 'user',
+            text: L.myLocationMsg
+          },
+          {
+            role: 'ai',
+            type: 'weather',
+            data: {
+              name: loc.name,
+              dateLabel: null,
+              temp: c.temperature_2m,
+              wind: c.wind_speed_10m,
+              tempMin: d.temperature_2m_min[0],
+              tempMax: d.temperature_2m_max[0],
+              rainChance: d.precipitation_probability_max[0],
+              code: c.weather_code,
+              alerts
+            }
+          }
+        ])
+
+        const alertText = alerts.length > 0
+          ? ` ${L.voice.warning}: ${alerts
+              .map(alert => L.alerts[alert.key])
+              .join('. ')}.`
+          : ''
+
+        const tipsText = situationalTips(
+          d.precipitation_probability_max[0],
+          d.temperature_2m_max[0],
+          alerts
+        )
+          .map(key => L.tips[key])
+          .join('. ')
+
+        const spokenSummary = `${loc.name}. ${
+          L.weather[weatherCode(c.weather_code).key]
+        }, ${c.temperature_2m} ${L.voice.degrees}. ${
+          L.voice.todayHigh
+        } ${d.temperature_2m_max[0]} ${L.voice.degrees}, ${
+          L.voice.low
+        } ${d.temperature_2m_min[0]} ${L.voice.degrees}. ${
+          L.voice.chanceOfRain
+        } ${d.precipitation_probability_max[0]} ${
+          L.voice.percent
+        }. ${
+          L.advisory[
+            advisoryKey(
+              d.precipitation_probability_max[0],
+              d.temperature_2m_max[0]
+            )
+          ]
+        }.${alertText} ${tipsText}`
+
+        if (voiceMode) {
+          speak(spokenSummary, L.voiceLangCode)
+        }
+      } catch (err) {
+        console.error(err)
+
         setMessages(m => [
           ...m,
           {
@@ -68,87 +171,44 @@ export default function App() {
             text: L.locationError
           }
         ])
-        setLoading(false)
-        return
       }
 
-      const weather = await getWeatherCached(loc)
-      const c = weather.current
-      const d = weather.daily
-      const alerts = deriveAlerts(c, d)
-
-      setMessages(m => [
-        ...m,
-        {
-          role: 'user',
-          text: L.myLocationMsg
-        },
-        {
-          role: 'ai',
-          type: 'weather',
-          data: {
-            name: loc.name,
-            dateLabel: null,
-            temp: c.temperature_2m,
-            wind: c.wind_speed_10m,
-            tempMin: d.temperature_2m_min[0],
-            tempMax: d.temperature_2m_max[0],
-            rainChance: d.precipitation_probability_max[0],
-            code: c.weather_code,
-            alerts
-          }
-        }
-      ])
-
-      const alertText = alerts.length > 0
-        ? ` ${L.voice.warning}: ${alerts
-            .map(alert => L.alerts[alert.key])
-            .join('. ')}.`
-        : ''
-
-      const tipsText = situationalTips(
-        d.precipitation_probability_max[0],
-        d.temperature_2m_max[0],
-        alerts
-      )
-        .map(key => L.tips[key])
-        .join('. ')
-
-      const spokenSummary = `${loc.name}. ${
-        L.weather[weatherCode(c.weather_code).key]
-      }, ${c.temperature_2m} ${L.voice.degrees}. ${
-        L.voice.todayHigh
-      } ${d.temperature_2m_max[0]} ${L.voice.degrees}, ${
-        L.voice.low
-      } ${d.temperature_2m_min[0]} ${L.voice.degrees}. ${
-        L.voice.chanceOfRain
-      } ${d.precipitation_probability_max[0]} ${
-        L.voice.percent
-      }. ${
-        L.advisory[
-          advisoryKey(
-            d.precipitation_probability_max[0],
-            d.temperature_2m_max[0]
-          )
-        ]
-      }.${alertText} ${tipsText}`
-
-      if (voiceMode) {
-        speak(spokenSummary, L.voiceLangCode)
-      }
-    } catch (err) {
-      console.error(err)
-
-      setMessages(m => [
-        ...m,
-        {
-          role: 'ai',
-          text: L.locationError
-        }
-      ])
+      setLoading(false)
     }
 
-    setLoading(false)
+    if (!navigator.geolocation) {
+      fallbackToIP()
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async pos => {
+        try {
+          const { latitude, longitude, accuracy } = pos.coords
+          console.log('Location accuracy (meters):', accuracy)
+
+          const name = await reverseGeocode(latitude, longitude)
+
+          await finishLocationFlow({
+            name,
+            lat: latitude,
+            lon: longitude
+          })
+        } catch (err) {
+          console.error(err)
+          fallbackToIP()
+        }
+      },
+      err => {
+        console.error('Geolocation failed:', err.code, err.message)
+        fallbackToIP()
+      },
+      {
+        timeout: 15000,
+        enableHighAccuracy: true,
+        maximumAge: 0
+      }
+    )
   }
 
   async function handleSend() {
@@ -355,8 +415,8 @@ export default function App() {
         return
       }
 
-      const weather = await 
       const weather = await getWeatherCached(loc)
+      const c = weather.current
       const d = weather.daily
 
       const dayIndex = Math.min(
@@ -500,17 +560,16 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#04121b] via-[#0a2540] to-[#04121b] flex flex-col items-center px-4 py-6">
+    <div className="min-h-screen bg-gradient-to-b from-[#093343] via-[#175d73] to-[#093343] flex flex-col items-center px-4 py-6">
       <div className="w-full max-w-md flex flex-col h-[90vh] rounded-3xl overflow-hidden relative">
-
         <div className="px-5 py-4 flex items-center justify-between relative z-10">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#2E86FF] to-[#7dd3fc] flex items-center justify-center text-sm font-bold">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0cc8e8] to-[#6ae6f6] flex items-center justify-center text-sm font-bold">
               ☁️
             </div>
 
             <h1 className="text-white font-semibold text-lg">
-              WeatherGPT
+              WeatherBuddy
             </h1>
           </div>
 
@@ -519,7 +578,7 @@ export default function App() {
               onClick={() => setVoiceMode(value => !value)}
               className={`text-xs rounded-full px-3 py-1 border transition-colors ${
                 voiceMode
-                  ? 'bg-[#2E86FF]/30 text-[#7dd3fc] border-[#2E86FF]/40'
+                  ? 'bg-[#0cc8e8]/30 text-[#6ae6f6] border-[#0cc8e8]/40'
                   : 'text-slate-400 border-white/10 hover:bg-white/10'
               }`}
             >
@@ -544,11 +603,11 @@ export default function App() {
               className="w-20 h-20 rounded-full mb-6"
               style={{
                 background:
-                  'linear-gradient(120deg, #2E86FF, #7dd3fc, #2E86FF)',
+                  'linear-gradient(120deg, #0cc8e8, #6ae6f6, #0cc8e8)',
                 backgroundSize: '200% 200%',
                 animation:
                   'orb-pulse 3s ease-in-out infinite, orb-rotate 6s linear infinite',
-                boxShadow: '0 0 40px rgba(46,134,255,0.5)'
+                boxShadow: '0 0 40px rgba(12,200,232,0.5)'
               }}
             />
 
@@ -556,8 +615,8 @@ export default function App() {
               Hello there!
             </h2>
 
-            <p className="text-[#7dd3fc] text-sm mb-1">
-              I'm WeatherGPT
+            <p className="text-[#6ae6f6] text-sm mb-1">
+              I'm WeatherBuddy
             </p>
 
             <p className="text-slate-400 text-sm text-center max-w-xs">
@@ -637,7 +696,7 @@ export default function App() {
                         </div>
                       )}
 
-                    <div className="text-sm bg-[#2E86FF]/20 text-[#7dd3fc] rounded-lg px-3 py-2 mb-2">
+                    <div className="text-sm bg-[#0cc8e8]/20 text-[#6ae6f6] rounded-lg px-3 py-2 mb-2">
                       {L.advisory[
                         advisoryKey(
                           message.data.rainChance,
@@ -718,7 +777,7 @@ export default function App() {
                   <div
                     className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm whitespace-pre-line ${
                       message.role === 'user'
-                        ? 'bg-gradient-to-br from-[#2E86FF] to-[#1d6fe0] text-white rounded-br-sm'
+                        ? 'bg-gradient-to-br from-[#0cc8e8] to-[#0c8fae] text-white rounded-br-sm'
                         : 'bg-white/10 text-slate-100 rounded-bl-sm'
                     }`}
                   >
@@ -730,8 +789,8 @@ export default function App() {
 
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-white/10 text-slate-300 px-4 py-2.5 rounded-2xl rounded-bl-sm text-sm animate-pulse">
-                  {L.thinking}
+                <div className="bg-white/10 rounded-2xl rounded-bl-sm px-4 py-3">
+                  <ThinkingLoader />
                 </div>
               </div>
             )}
@@ -741,54 +800,70 @@ export default function App() {
         )}
 
         <div className="px-4 pb-4 pt-2 relative z-10">
-          <div className="flex gap-2 items-center bg-white/8 backdrop-blur-xl border border-white/15 rounded-full px-2 py-2">
-            <button
-              onClick={handleUseLocation}
-              disabled={loading}
-              title="Use my location"
-              className="w-9 h-9 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors disabled:opacity-50 shrink-0"
-            >
-              📍
-            </button>
-
-            <input
+          <div
+            className="relative w-full rounded-3xl border border-white/15 bg-white/8 backdrop-blur-xl shadow-lg transition-all duration-300 ease-[cubic-bezier(0.175,0.885,0.32,1.275)]"
+            style={{ minHeight: 52 }}
+          >
+            <textarea
               value={input}
-              onChange={event => setInput(event.target.value)}
-              onKeyDown={event => {
-                if (event.key === 'Enter') {
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
                   handleSend()
                 }
               }}
+              rows={1}
               placeholder={L.placeholder}
-              className="flex-1 bg-transparent text-white placeholder-slate-400 text-sm outline-none min-w-0"
+              className="w-full bg-transparent text-white placeholder-slate-400 text-sm outline-none resize-none pl-4 pr-28 py-3.5 leading-[22px] max-h-32"
+              style={{ minHeight: 52 }}
+              onInput={e => {
+                e.target.style.height = 'auto'
+                e.target.style.height =
+                  Math.min(e.target.scrollHeight, 128) + 'px'
+              }}
             />
 
-            <button
-              onClick={start}
-              disabled={loading}
-              title="Speak your question"
-              className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors disabled:opacity-50 shrink-0 ${
-                listening
-                  ? 'bg-red-500/40 text-white animate-pulse'
-                  : 'text-[#7dd3fc] hover:bg-white/10'
-              }`}
-            >
-              🎤
-            </button>
+            <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
+              <button
+                onClick={handleUseLocation}
+                disabled={loading}
+                title="Use my location"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-50"
+              >
+                📍
+              </button>
 
-            {loading ? (
-              <div className="w-9 h-9 flex items-center justify-center shrink-0">
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              </div>
-            ) : (
+              <button
+                onClick={start}
+                disabled={loading}
+                title="Speak your question"
+                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 disabled:opacity-50 ${
+                  listening
+                    ? 'bg-red-500/40 text-white animate-pulse scale-105'
+                    : 'text-[#6ae6f6] hover:bg-white/10'
+                }`}
+              >
+                🎤
+              </button>
+
               <button
                 onClick={handleSend}
-                disabled={loading}
-                className="w-9 h-9 rounded-full bg-gradient-to-br from-[#2E86FF] to-[#7dd3fc] text-white flex items-center justify-center disabled:opacity-50 hover:opacity-90 transition-opacity shrink-0"
+                disabled={loading || !input.trim()}
+                className="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ease-[cubic-bezier(0.175,0.885,0.32,1.275)] disabled:opacity-50"
+                style={{
+                  background: input.trim()
+                    ? 'linear-gradient(135deg, #0cc8e8, #6ae6f6)'
+                    : 'rgba(255,255,255,0.1)'
+                }}
               >
-                →
+                {loading ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <span className="text-white text-sm">→</span>
+                )}
               </button>
-            )}
+            </div>
           </div>
         </div>
       </div>

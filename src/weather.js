@@ -20,15 +20,15 @@ export async function geocode(location) {
 
   return null
 }
-
 export async function reverseGeocode(lat, lon) {
   const res = await fetch(
-    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
+    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1&accept-language=en`
   )
   const data = await res.json()
-  return data.display_name ? data.display_name.split(',')[0] : 'Current location'
+  const addr = data.address || {}
+  const name = addr.suburb || addr.neighbourhood || addr.city_district || addr.town || addr.village || addr.city || data.display_name?.split(',')[0] || 'Current location'
+  return name
 }
-
 export async function getLocationByIP() {
   const res = await fetch('https://ipapi.co/json/')
   const data = await res.json()

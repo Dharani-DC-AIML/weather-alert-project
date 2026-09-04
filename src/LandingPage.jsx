@@ -9,11 +9,12 @@ export default function LandingPage({ languages, onSelect }) {
       <nav className="relative z-10 flex justify-between items-center px-6 sm:px-10 py-4 shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#2E86FF] to-[#7dd3fc]" />
+
           <span
             className="text-white text-base font-medium"
             style={{ fontFamily: "'Inter', sans-serif" }}
           >
-            WeatherGPT
+            WeatherBuddy
           </span>
         </div>
       </nav>
@@ -25,7 +26,9 @@ export default function LandingPage({ languages, onSelect }) {
         >
           Know the sky.
           <br />
-          <span className="text-slate-300">Decide with confidence.</span>
+          <span className="text-slate-300">
+            Decide with confidence.
+          </span>
         </h1>
 
         <p
