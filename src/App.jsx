@@ -1,6 +1,6 @@
 // src/App.jsx
 import ThinkingLoader from './ThinkingLoader'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, lazy, Suspense } from 'react'
 import { parseQuery } from './gemini'
 import {
   geocode,
@@ -22,12 +22,70 @@ import { useVoice, speak } from './useVoice'
 import LandingPage from './LandingPage'
 import HistoricalChart from './HistoricalChart'
 
+const LiveMapModal = lazy(() => import('./LiveMapModal'))
+
+function LocationIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  )
+}
+
+function MicIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="9" y="2" width="6" height="11" rx="3" />
+      <path d="M5 10v1a7 7 0 0 0 14 0v-1" />
+      <line x1="12" y1="19" x2="12" y2="22" />
+    </svg>
+  )
+}
+
+function ArrowUpIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <line x1="12" y1="19" x2="12" y2="5" />
+      <polyline points="5 12 12 5 19 12" />
+    </svg>
+  )
+}
+
 export default function App() {
   const [language, setLanguage] = useState(null)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [voiceMode, setVoiceMode] = useState(false)
+  const [mapFor, setMapFor] = useState(null)
   const bottomRef = useRef(null)
 
   useEffect(() => {
@@ -62,8 +120,9 @@ export default function App() {
   }
 
   const L = t[language]
+  const quickChipModes = ['today', 'week', 'today', 'today']
 
-  async function handleUseLocation() {
+  async function handleUseLocation(mode = 'today', chipLabel) {
     setLoading(true)
 
     function fallbackToIP() {
@@ -97,6 +156,38 @@ export default function App() {
 
     async function finishLocationFlow(loc) {
       try {
+        if (mode === 'week') {
+          const weather = await getWeatherCached(loc)
+          const d = weather.daily
+
+          const days = d.time.map((dateStr, i) => ({
+            dateLabel: new Date(`${dateStr}T00:00:00`).toLocaleDateString(
+              undefined,
+              { weekday: 'short' }
+            ),
+            code: d.weather_code[i],
+            tempMax: d.temperature_2m_max[i],
+            tempMin: d.temperature_2m_min[i],
+            rainChance: d.precipitation_probability_max[i]
+          }))
+
+          setMessages(m => [
+            ...m,
+            {
+              role: 'user',
+              text: chipLabel || L.myLocationMsg
+            },
+            {
+              role: 'ai',
+              type: 'week',
+              data: { name: loc.name, days }
+            }
+          ])
+
+          setLoading(false)
+          return
+        }
+
         const weather = await getWeatherCached(loc)
         const c = weather.current
         const d = weather.daily
@@ -106,13 +197,16 @@ export default function App() {
           ...m,
           {
             role: 'user',
-            text: L.myLocationMsg
+            text: chipLabel || L.myLocationMsg
           },
           {
             role: 'ai',
             type: 'weather',
             data: {
               name: loc.name,
+              lat: loc.lat,
+              lon: loc.lon,
+              rainMm: c.precipitation,
               dateLabel: null,
               temp: c.temperature_2m,
               wind: c.wind_speed_10m,
@@ -211,10 +305,11 @@ export default function App() {
     )
   }
 
-  async function handleSend() {
-    if (!input.trim() || loading) return
+  async function handleSend(quickText) {
+    const textToSend = quickText ?? input
+    if (!textToSend.trim() || loading) return
 
-    const userText = input.trim()
+    const userText = textToSend.trim()
 
     setMessages(m => [
       ...m,
@@ -471,6 +566,9 @@ export default function App() {
           type: 'weather',
           data: {
             name: loc.name,
+            lat: loc.lat,
+            lon: loc.lon,
+            rainMm: isToday ? c.precipitation : null,
             dateLabel: isToday ? null : dateLabel,
             temp: isToday
               ? c.temperature_2m
@@ -561,7 +659,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#093343] via-[#175d73] to-[#093343] flex flex-col items-center px-4 py-6">
-      <div className="w-full max-w-md flex flex-col h-[90vh] rounded-3xl overflow-hidden relative">
+      <div className="w-full max-w-md md:max-w-2xl lg:max-w-4xl flex flex-col h-[90vh] rounded-3xl overflow-hidden relative">
         <div className="px-5 py-4 flex items-center justify-between relative z-10">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0cc8e8] to-[#6ae6f6] flex items-center justify-center text-sm font-bold">
@@ -619,9 +717,22 @@ export default function App() {
               I'm WeatherBuddy
             </p>
 
-            <p className="text-slate-400 text-sm text-center max-w-xs">
+            <p className="text-slate-400 text-sm md:text-base text-center max-w-xs md:max-w-sm mb-6">
               {L.greeting}
             </p>
+
+            <div className="flex flex-wrap justify-center gap-2 max-w-sm md:max-w-md">
+              {L.quickChips.map((chip, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleUseLocation(quickChipModes[index], chip)}
+                  disabled={loading}
+                  className="text-xs md:text-sm text-[#6ae6f6] border border-[#0cc8e8]/30 bg-white/5 rounded-full px-3 py-1.5 hover:bg-white/10 transition-colors disabled:opacity-50"
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 relative z-10">
@@ -717,6 +828,50 @@ export default function App() {
                         💡 {L.tips[tipKey]}
                       </div>
                     ))}
+
+                    {message.data.lat && (
+                      <button
+                        onClick={() => setMapFor(message.data)}
+                        className="mt-2 text-xs text-[#7dd3fc] bg-white/5 hover:bg-white/10 rounded-lg px-3 py-1.5 transition-colors"
+                      >
+                        🗺️ Live map
+                      </button>
+                    )}
+                  </div>
+                ) : message.type === 'week' ? (
+                  <div className="max-w-[90%] bg-white/10 rounded-2xl rounded-bl-sm p-4 text-white">
+                    <div className="font-semibold text-base mb-3">
+                      {message.data.name} — 7-day forecast
+                    </div>
+
+                    <div className="flex gap-3 overflow-x-auto pb-1">
+                      {message.data.days.map((day, dayIndex) => (
+                        <div
+                          key={dayIndex}
+                          className="flex-shrink-0 w-20 bg-white/5 rounded-xl p-2 flex flex-col items-center text-center"
+                        >
+                          <div className="text-xs text-slate-400 mb-1">
+                            {day.dateLabel}
+                          </div>
+
+                          <div className="text-2xl mb-1">
+                            {weatherCode(day.code).icon}
+                          </div>
+
+                          <div className="text-sm font-semibold">
+                            {day.tempMax}°
+                          </div>
+
+                          <div className="text-xs text-slate-400">
+                            {day.tempMin}°
+                          </div>
+
+                          <div className="text-xs text-[#6ae6f6] mt-1">
+                            💧{day.rainChance}%
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : message.type === 'historical-trend' ? (
                   <div className="max-w-[90%] bg-white/10 rounded-2xl rounded-bl-sm p-4 text-white">
@@ -800,10 +955,7 @@ export default function App() {
         )}
 
         <div className="px-4 pb-4 pt-2 relative z-10">
-          <div
-            className="relative w-full rounded-3xl border border-white/15 bg-white/8 backdrop-blur-xl shadow-lg transition-all duration-300 ease-[cubic-bezier(0.175,0.885,0.32,1.275)]"
-            style={{ minHeight: 52 }}
-          >
+          <div className="rounded-3xl border border-white/15 bg-[#093343]/90 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.3)] p-2">
             <textarea
               value={input}
               onChange={e => setInput(e.target.value)}
@@ -815,8 +967,7 @@ export default function App() {
               }}
               rows={1}
               placeholder={L.placeholder}
-              className="w-full bg-transparent text-white placeholder-slate-400 text-sm outline-none resize-none pl-4 pr-28 py-3.5 leading-[22px] max-h-32"
-              style={{ minHeight: 52 }}
+              className="w-full bg-transparent text-white placeholder-slate-400 text-sm outline-none resize-none px-3 py-2.5 leading-[22px] max-h-32"
               onInput={e => {
                 e.target.style.height = 'auto'
                 e.target.style.height =
@@ -824,49 +975,80 @@ export default function App() {
               }}
             />
 
-            <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
+            <div className="flex items-center justify-between gap-2 px-1 pt-1">
               <button
                 onClick={handleUseLocation}
                 disabled={loading}
                 title="Use my location"
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-50"
+                className="flex h-8 w-8 items-center justify-center rounded-full text-[#6ae6f6] hover:bg-white/10 transition-colors disabled:opacity-50"
               >
-                📍
+                <LocationIcon />
               </button>
 
-              <button
-                onClick={start}
-                disabled={loading}
-                title="Speak your question"
-                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 disabled:opacity-50 ${
-                  listening
-                    ? 'bg-red-500/40 text-white animate-pulse scale-105'
-                    : 'text-[#6ae6f6] hover:bg-white/10'
-                }`}
-              >
-                🎤
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={start}
+                  disabled={loading}
+                  title="Speak your question"
+                  className={`h-8 w-8 rounded-full flex items-center justify-center transition-all duration-300 disabled:opacity-50 ${
+                    listening
+                      ? 'bg-red-500/30 text-white scale-110'
+                      : 'text-white/70 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  <MicIcon />
+                </button>
 
-              <button
-                onClick={handleSend}
-                disabled={loading || !input.trim()}
-                className="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ease-[cubic-bezier(0.175,0.885,0.32,1.275)] disabled:opacity-50"
-                style={{
-                  background: input.trim()
-                    ? 'linear-gradient(135deg, #0cc8e8, #6ae6f6)'
-                    : 'rgba(255,255,255,0.1)'
-                }}
-              >
-                {loading ? (
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <span className="text-white text-sm">→</span>
-                )}
-              </button>
+                <button
+                  onClick={handleSend}
+                  disabled={loading || !input.trim()}
+                  className="h-8 w-8 rounded-full flex items-center justify-center transition-all duration-300 disabled:opacity-40"
+                  style={{
+                    background: input.trim()
+                      ? 'linear-gradient(135deg, #0cc8e8, #6ae6f6)'
+                      : 'rgba(255,255,255,0.1)'
+                  }}
+                >
+                  <span className="relative flex h-full w-full items-center justify-center">
+                    <span
+                      className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${
+                        loading
+                          ? 'opacity-100 scale-100'
+                          : 'opacity-0 scale-50'
+                      }`}
+                    >
+                      <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    </span>
+
+                    <span
+                      className={`absolute inset-0 flex items-center justify-center text-white transition-all duration-300 ${
+                        !loading
+                          ? 'opacity-100 scale-100'
+                          : 'opacity-0 scale-50'
+                      }`}
+                    >
+                      <ArrowUpIcon />
+                    </span>
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {mapFor && (
+        <Suspense fallback={null}>
+          <LiveMapModal
+            name={mapFor.name}
+            lat={mapFor.lat}
+            lon={mapFor.lon}
+            rainMm={mapFor.rainMm}
+            alerts={mapFor.alerts}
+            onClose={() => setMapFor(null)}
+          />
+        </Suspense>
+      )}
     </div>
   )
 }

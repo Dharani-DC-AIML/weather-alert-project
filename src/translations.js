@@ -21,6 +21,7 @@ export const t = {
     fetchError: 'Something went wrong fetching that. Try again.',
     locationError: "Couldn't detect your location right now.",
     myLocationMsg: '📍 Weather at my location',
+    quickChips: ["Today's weather", "This week's forecast", "Any alerts near me?", "Do I need an umbrella?"],
     wind: 'wind',
     rain: 'rain',
     weather: {
@@ -42,6 +43,7 @@ export const t = {
     },
     alerts: {
       heavyRain: 'Heavy rainfall likely — risk of local flooding',
+      moderateRain: 'Moderate rain expected — minor flooding possible in low areas',
       extremeHeat: 'Extreme heat warning — avoid outdoor exposure',
       highWind: 'High wind advisory — secure loose objects',
       thunderstorm: 'Thunderstorm warning in this area'
@@ -51,7 +53,7 @@ export const t = {
       floodSafety: 'Flood risk — stay indoors, avoid low-lying areas, keep emergency numbers handy',
       heatSafety: 'Avoid outdoor work between 11am–4pm during extreme heat',
       stormSafety: 'Thunderstorm risk — stay indoors, avoid open fields and unplug electronics',
-      hydration: 'Hot day — drink water regularly even if you don’t feel thirsty'
+      hydration: 'Hot day — drink water regularly even if you don\'t feel thirsty'
     },
     voice: {
       degrees: 'degrees',
@@ -75,6 +77,7 @@ export const t = {
     fetchError: 'ஏதோ தவறு நடந்தது. மீண்டும் முயற்சிக்கவும்.',
     locationError: 'உங்கள் இடத்தைக் கண்டறிய முடியவில்லை.',
     myLocationMsg: '📍 எனது இடத்தின் வானிலை',
+    quickChips: ["இன்றைய வானிலை", "இந்த வார முன்னறிவிப்பு", "எனக்கு அருகில் எச்சரிக்கைகள்?", "குடை தேவையா?"],
     wind: 'காற்று',
     rain: 'மழை',
     weather: {
@@ -96,6 +99,7 @@ export const t = {
     },
     alerts: {
       heavyRain: 'கனமழை எச்சரிக்கை — வெள்ள ஆபத்து',
+      moderateRain: 'மிதமான மழை எதிர்பார்க்கப்படுகிறது — தாழ்வான பகுதிகளில் சிறிய வெள்ளம் ஏற்படலாம்',
       extremeHeat: 'கடும் வெப்ப எச்சரிக்கை',
       highWind: 'அதிக காற்று எச்சரிக்கை',
       thunderstorm: 'இடி மின்னல் எச்சரிக்கை'
@@ -129,6 +133,7 @@ export const t = {
     fetchError: 'ఏదో తప్పు జరిగింది. మళ్లీ ప్రయత్నించండి.',
     locationError: 'మీ స్థానాన్ని గుర్తించలేకపోయాము.',
     myLocationMsg: '📍 నా ప్రదేశంలో వాతావరణం',
+    quickChips: ["ఈరోజు వాతావరణం", "ఈ వారం అంచనా", "నా దగ్గర హెచ్చరికలు?", "గొడుగు అవసరమా?"],
     wind: 'గాలి',
     rain: 'వర్షం',
     weather: {
@@ -150,6 +155,7 @@ export const t = {
     },
     alerts: {
       heavyRain: 'భారీ వర్షం హెచ్చరిక — వరద ప్రమాదం',
+      moderateRain: 'మితమైన వర్షం అంచనా — తక్కువ ప్రాంతాల్లో స్వల్ప వరద అవకాశం',
       extremeHeat: 'తీవ్ర వేడి హెచ్చరిక',
       highWind: 'అధిక గాలుల హెచ్చరిక',
       thunderstorm: 'ఉరుములతో కూడిన వర్షం హెచ్చరిక'
@@ -183,6 +189,7 @@ export const t = {
     fetchError: 'എന്തോ പിശക് സംഭവിച്ചു. വീണ്ടും ശ്രമിക്കുക.',
     locationError: 'നിങ്ങളുടെ സ്ഥാനം കണ്ടെത്താനായില്ല.',
     myLocationMsg: '📍 എന്റെ സ്ഥലത്തെ കാലാവസ്ഥ',
+    quickChips: ["ഇന്നത്തെ കാലാവസ്ഥ", "ഈ ആഴ്ചത്തെ പ്രവചനം", "എനിക്ക് സമീപം മുന്നറിയിപ്പുകൾ?", "കുട വേണോ?"],
     wind: 'കാറ്റ്',
     rain: 'മഴ',
     weather: {
@@ -204,6 +211,7 @@ export const t = {
     },
     alerts: {
       heavyRain: 'കനത്ത മഴ മുന്നറിയിപ്പ് — വെള്ളപ്പൊക്ക സാധ്യത',
+      moderateRain: 'മിതമായ മഴ പ്രതീക്ഷിക്കുന്നു — താഴ്ന്ന പ്രദേശങ്ങളിൽ ചെറിയ വെള്ളപ്പൊക്ക സാധ്യത',
       extremeHeat: 'അതിതീവ്ര ചൂട് മുന്നറിയിപ്പ്',
       highWind: 'ശക്തമായ കാറ്റ് മുന്നറിയിപ്പ്',
       thunderstorm: 'ഇടിമിന്നൽ മുന്നറിയിപ്പ്'
@@ -237,6 +245,7 @@ export const t = {
     fetchError: 'कुछ गलत हो गया। फिर से कोशिश करें।',
     locationError: 'आपकी जगह का पता नहीं लगा सके।',
     myLocationMsg: '📍 मेरी जगह का मौसम',
+    quickChips: ["आज का मौसम", "इस हफ्ते का पूर्वानुमान", "मेरे पास चेतावनियां?", "क्या छाता चाहिए?"],
     wind: 'हवा',
     rain: 'बारिश',
     weather: {
@@ -258,6 +267,7 @@ export const t = {
     },
     alerts: {
       heavyRain: 'भारी बारिश की चेतावनी — बाढ़ का खतरा',
+      moderateRain: 'मध्यम बारिश की संभावना — निचले इलाकों में हल्की बाढ़ संभव',
       extremeHeat: 'अत्यधिक गर्मी की चेतावनी',
       highWind: 'तेज हवा की चेतावनी',
       thunderstorm: 'आंधी-तूफान की चेतावनी'

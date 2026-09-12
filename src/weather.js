@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+
 export async function geocode(location) {
   const res = await fetch(
     `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1`
@@ -20,6 +21,7 @@ export async function geocode(location) {
 
   return null
 }
+
 export async function reverseGeocode(lat, lon) {
   const res = await fetch(
     `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1&accept-language=en`
@@ -29,6 +31,7 @@ export async function reverseGeocode(lat, lon) {
   const name = addr.suburb || addr.neighbourhood || addr.city_district || addr.town || addr.village || addr.city || data.display_name?.split(',')[0] || 'Current location'
   return name
 }
+
 export async function getLocationByIP() {
   const res = await fetch('https://ipapi.co/json/')
   const data = await res.json()
@@ -37,25 +40,34 @@ export async function getLocationByIP() {
 
 export async function getWeather(lat, lon) {
   const res = await fetch(
-    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,precipitation,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=auto`
+    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,precipitation,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,weather_code&timezone=auto`
   )
   return res.json()
 }
 
 export function deriveAlerts(current, daily) {
   const alerts = []
-  if (daily.precipitation_probability_max[0] >= 80) alerts.push({ severity: 'amber', key: 'heavyRain' })
+  const rainAmount = daily.precipitation_sum ? daily.precipitation_sum[0] : 0
+
+  if (rainAmount >= 64.5) {
+    alerts.push({ severity: 'red', key: 'heavyRain' })
+  } else if (rainAmount >= 15) {
+    alerts.push({ severity: 'amber', key: 'moderateRain' })
+  }
+
   if (daily.temperature_2m_max[0] >= 40) alerts.push({ severity: 'red', key: 'extremeHeat' })
   if (current.wind_speed_10m >= 40) alerts.push({ severity: 'amber', key: 'highWind' })
   if (current.weather_code >= 95) alerts.push({ severity: 'red', key: 'thunderstorm' })
   return alerts
 }
+
 export async function getHistoricalWeather(lat, lon, dateStr) {
   const res = await fetch(
     `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${dateStr}&end_date=${dateStr}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`
   )
   return res.json()
 }
+
 export async function getMonthlyHistoricalStats(lat, lon, month, yearsBack) {
   const currentYear = new Date().getFullYear()
   const results = []
@@ -82,6 +94,46 @@ export async function getMonthlyHistoricalStats(lat, lon, month, yearsBack) {
   }
 
   return results
+}
+export function rainCategory(mm) {
+  if (mm > 204.4) return { color: '#8B008B', label: 'Extremely heavy', level: 1 }
+  if (mm >= 115.6) return { color: '#E53E3E', label: 'Very heavy', level: 0.85 }
+  if (mm >= 64.5) return { color: '#F97316', label: 'Heavy', level: 0.7 }
+  if (mm >= 15.6) return { color: '#F5A623', label: 'Moderate', level: 0.5 }
+  if (mm >= 2.5) return { color: '#84CC16', label: 'Light', level: 0.3 }
+  if (mm >= 0.1) return { color: '#38BDF8', label: 'Very light', level: 0.15 }
+  return { color: '#94A3B8', label: 'No rain', level: 0 }
+}
+
+// Fetches a grid of points around (lat, lon) in a SINGLE Open-Meteo request
+// (Open-Meteo supports comma-separated coordinates, up to 1000 per call).
+export async function getRainGrid(lat, lon) {
+  const HALF_EXTENT_DEG = 0.036 // roughly 4km each direction
+  const STEPS = 7
+  const points = []
+
+  for (let i = 0; i < STEPS; i++) {
+    for (let j = 0; j < STEPS; j++) {
+      const dLat = -HALF_EXTENT_DEG + (i / (STEPS - 1)) * (HALF_EXTENT_DEG * 2)
+      const dLon = -HALF_EXTENT_DEG + (j / (STEPS - 1)) * (HALF_EXTENT_DEG * 2)
+      points.push({ lat: lat + dLat, lon: lon + dLon })
+    }
+  }
+
+  const latStr = points.map(p => p.lat.toFixed(4)).join(',')
+  const lonStr = points.map(p => p.lon.toFixed(4)).join(',')
+
+  const res = await fetch(
+    `https://api.open-meteo.com/v1/forecast?latitude=${latStr}&longitude=${lonStr}&current=precipitation`
+  )
+  const data = await res.json()
+  const list = Array.isArray(data) ? data : [data]
+
+  return points.map((p, index) => ({
+    lat: p.lat,
+    lon: p.lon,
+    rainMm: list[index]?.current?.precipitation ?? 0
+  }))
 }
 const CACHE_FRESH_MS = 30 * 60 * 1000 // 30 minutes
 

@@ -64,10 +64,10 @@ export default function ThinkingLoader() {
           fill="#fde68a"
         />
 
-        <line className="drop1" x1="16" y1="40" x2="14" y2="47" stroke="#7dd3fc" strokeWidth="2" strokeLinecap="round" />
-        <line className="drop2" x1="24" y1="42" x2="22" y2="49" stroke="#7dd3fc" strokeWidth="2" strokeLinecap="round" />
-        <line className="drop3" x1="40" y1="42" x2="38" y2="49" stroke="#7dd3fc" strokeWidth="2" strokeLinecap="round" />
-        <line className="drop4" x1="48" y1="40" x2="46" y2="47" stroke="#7dd3fc" strokeWidth="2" strokeLinecap="round" />
+        <line className="drop1" x1="16" y1="40" x2="14" y2="47" stroke="#6ae6f6" strokeWidth="2" strokeLinecap="round" />
+        <line className="drop2" x1="24" y1="42" x2="22" y2="49" stroke="#6ae6f6" strokeWidth="2" strokeLinecap="round" />
+        <line className="drop3" x1="40" y1="42" x2="38" y2="49" stroke="#6ae6f6" strokeWidth="2" strokeLinecap="round" />
+        <line className="drop4" x1="48" y1="40" x2="46" y2="47" stroke="#6ae6f6" strokeWidth="2" strokeLinecap="round" />
 
         <g className="cloud-left">
           <ellipse cx="18" cy="30" rx="12" ry="9" fill="#e2e8f0" />
