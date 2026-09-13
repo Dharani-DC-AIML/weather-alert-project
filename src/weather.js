@@ -182,3 +182,45 @@ export async function getWeatherCached(loc) {
 
   return fresh
 }
+export async function getClimateTrends(lat, lon) {
+  const end = new Date()
+  end.setDate(end.getDate() - 2)
+  const start = new Date(end)
+  start.setDate(start.getDate() - 395)
+
+  const fmt = d => d.toISOString().split('T')[0]
+
+  const res = await fetch(
+    `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${fmt(start)}&end_date=${fmt(end)}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`
+  )
+  const data = await res.json()
+  const d = data.daily
+  if (!d || !d.time || d.time.length === 0) return null
+
+  const startOf30 = Math.max(d.time.length - 30, 0)
+  const highs30 = d.temperature_2m_max.slice(startOf30)
+  const lows30 = d.temperature_2m_min.slice(startOf30)
+  const rain30 = d.precipitation_sum.slice(startOf30)
+
+  const avgHigh = highs30.reduce((a, b) => a + b, 0) / highs30.length
+  const avgLow = lows30.reduce((a, b) => a + b, 0) / lows30.length
+  const totalRain = rain30.reduce((a, b) => a + b, 0)
+  const hottestDay = Math.max(...highs30)
+
+  const monthMap = {}
+  d.time.forEach((dateStr, i) => {
+    const key = dateStr.slice(0, 7)
+    if (!monthMap[key]) monthMap[key] = 0
+    monthMap[key] += d.precipitation_sum[i]
+  })
+
+  const months = Object.keys(monthMap).sort().slice(-12).map(key => {
+    const [y, m] = key.split('-')
+    return {
+      label: new Date(Number(y), Number(m) - 1, 1).toLocaleDateString(undefined, { month: 'short' }),
+      rain: monthMap[key]
+    }
+  })
+
+  return { avgHigh, avgLow, totalRain, hottestDay, months }
+}

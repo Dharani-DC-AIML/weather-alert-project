@@ -1,65 +1,92 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
+@theme {
+--color-sky-50: #eaf5fa;
+--color-sky-100: #d5ebf6;
+--color-sky-200: #abd7ed;
+--color-sky-300: #82c3e3;
+--color-sky-400: #58afda;
+--color-sky-500: #2e9bd1;
+--color-sky-600: #257ca7;
+--color-sky-700: #1c5d7d;
+--color-sky-800: #123e54;
+--color-sky-900: #091f2a;
+--color-sky-950: #06161d;
+}
+button:not(:disabled) {
+  cursor: pointer;
+}
 :root {
-  --font-display: 'Instrument Serif', serif;
-  --font-body: 'Inter', sans-serif;
+--font-display: 'Instrument Serif', serif;
+--font-body: 'Inter', sans-serif;
 }
 
 body {
-  font-family: var(--font-body);
+font-family: var(--font-body);
 }
 
 .liquid-glass {
-  background: rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: none;
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15);
-  position: relative;
-  overflow: hidden;
+background: rgba(46, 155, 209, 0.08);
+backdrop-filter: blur(12px);
+-webkit-backdrop-filter: blur(12px);
+border: none;
+box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.4);
+position: relative;
+overflow: hidden;
+}
+.dark .liquid-glass {
+background: rgba(255, 255, 255, 0.06);
+box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15);
 }
 .liquid-glass::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1.4px;
-  background: linear-gradient(180deg,
-    rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.15) 20%,
-    rgba(255,255,255,0) 40%, rgba(255,255,255,0) 60%,
-    rgba(255,255,255,0.15) 80%, rgba(255,255,255,0.45) 100%);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
+content: '';
+position: absolute;
+inset: 0;
+border-radius: inherit;
+padding: 1.4px;
+background: linear-gradient(180deg,
+rgba(46,155,209,0.35) 0%, rgba(46,155,209,0.1) 20%,
+rgba(46,155,209,0) 40%, rgba(46,155,209,0) 60%,
+rgba(46,155,209,0.1) 80%, rgba(46,155,209,0.35) 100%);
+-webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+-webkit-mask-composite: xor;
+mask-composite: exclude;
+pointer-events: none;
+}
+.dark .liquid-glass::before {
+background: linear-gradient(180deg,
+rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.15) 20%,
+rgba(255,255,255,0) 40%, rgba(255,255,255,0) 60%,
+rgba(255,255,255,0.15) 80%, rgba(255,255,255,0.45) 100%);
 }
 
 @keyframes fade-rise {
-  from { opacity: 0; transform: translateY(24px); }
-  to { opacity: 1; transform: translateY(0); }
+from { opacity: 0; transform: translateY(24px); }
+to { opacity: 1; transform: translateY(0); }
 }
 .animate-fade-rise { animation: fade-rise 0.9s ease-out both; }
 .animate-fade-rise-delay { animation: fade-rise 0.9s ease-out 0.2s both; }
 .animate-fade-rise-delay-2 { animation: fade-rise 0.9s ease-out 0.4s both; }
 
 @keyframes drift {
-  from { transform: translateX(-10%); }
-  to { transform: translateX(10%); }
+from { transform: translateX(-10%); }
+to { transform: translateX(10%); }
 }
 @keyframes drift-slow {
-  from { transform: translateX(8%); }
-  to { transform: translateX(-8%); }
+from { transform: translateX(8%); }
+to { transform: translateX(-8%); }
 }
 @keyframes sky-shift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+0% { background-position: 0% 50%; }
+50% { background-position: 100% 50%; }
+100% { background-position: 0% 50%; }
 }
 @keyframes orb-pulse {
-  0%, 100% { transform: scale(1); opacity: 0.9; }
-  50% { transform: scale(1.06); opacity: 1; }
+0%, 100% { transform: scale(1); opacity: 0.9; }
+50% { transform: scale(1.06); opacity: 1; }
 }
 @keyframes orb-rotate {
-  from { background-position: 0% 50%; }
-  to { background-position: 200% 50%; }
+from { background-position: 0% 50%; }
+to { background-position: 200% 50%; }
 }
