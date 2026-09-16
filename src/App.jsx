@@ -1,5 +1,7 @@
 // src/App.jsx
 import ThinkingLoader from './ThinkingLoader'
+import { getHelplineForState, nationalHelpline } from './helplines'
+import { getMarineAdvisory, marineSeverity } from './weather'
 import { useState, useRef, useEffect, lazy, Suspense } from 'react'
 import { parseQuery } from './gemini'
 import {
@@ -16,7 +18,8 @@ import { supabase } from './supabaseClient'
 import {
   weatherCode,
   advisoryKey,
-  situationalTips
+  situationalTips,
+  agriAdvisoryKey
 } from './weatherIcons'
 import { languages, t } from './translations'
 import { useVoice, speak } from './useVoice'
@@ -82,6 +85,11 @@ export default function App() {
   const [trendsData, setTrendsData] = useState(null)
   const [trendsLoading, setTrendsLoading] = useState(false)
   const [currentLoc, setCurrentLoc] = useState(null)
+  const [helplineOpen, setHelplineOpen] = useState({})
+  const [marineOpen, setMarineOpen] = useState({})
+  const [marineData, setMarineData] = useState({})
+  const [marineLoading, setMarineLoading] = useState({})
+  const [agriOpen, setAgriOpen] = useState({})
   const bottomRef = useRef(null)
 
   useEffect(() => {
@@ -93,20 +101,36 @@ export default function App() {
     setTheme(current => (current === 'dark' ? 'light' : 'dark'))
   }
 
-  async function openTrends() {
+  async function openTrendsForLocation(loc) {
     setTrendsLoading(true)
     setTrendsOpen(true)
 
+    if (!loc?.lat) {
+      setTrendsData(null)
+      setTrendsLoading(false)
+      return
+    }
+
+    setCurrentLoc(loc)
+    const data = await getClimateTrends(loc.lat, loc.lon)
+    setTrendsData(data)
+    setTrendsLoading(false)
+  }
+
+  async function openTrends() {
     let loc = currentLoc
 
     if (!loc) {
+      setTrendsLoading(true)
+      setTrendsOpen(true)
+
       try {
         if (navigator.geolocation) {
           loc = await new Promise((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(
               async pos => {
-                const name = await reverseGeocode(pos.coords.latitude, pos.coords.longitude)
-                resolve({ name, lat: pos.coords.latitude, lon: pos.coords.longitude })
+                const geo = await reverseGeocode(pos.coords.latitude, pos.coords.longitude)
+                resolve({ name: geo.name, lat: pos.coords.latitude, lon: pos.coords.longitude, state: geo.state })
               },
               reject,
               { timeout: 15000, enableHighAccuracy: true, maximumAge: 0 }
@@ -118,20 +142,18 @@ export default function App() {
       } catch {
         loc = await getLocationByIP()
       }
-
-      if (loc?.lat) setCurrentLoc(loc)
     }
 
-    if (!loc?.lat) {
-      setTrendsData(null)
-      setTrendsLoading(false)
-      return
-    }
+    await openTrendsForLocation(loc)
+  }
 
-    const data = await getClimateTrends(loc.lat, loc.lon)
-    console.log('TRENDS DATA:', data)
-    setTrendsData(data)
-    setTrendsLoading(false)
+  async function handleMarineClick(index, lat, lon) {
+    setMarineOpen(o => ({ ...o, [index]: !o[index] }))
+    if (marineData[index] !== undefined) return
+    setMarineLoading(l => ({ ...l, [index]: true }))
+    const result = await getMarineAdvisory(lat, lon)
+    setMarineData(d => ({ ...d, [index]: result }))
+    setMarineLoading(l => ({ ...l, [index]: false }))
   }
 
   useEffect(() => {
@@ -228,6 +250,7 @@ export default function App() {
               name: loc.name,
               lat: loc.lat,
               lon: loc.lon,
+              state: loc.state,
               rainMm: c.precipitation,
               dateLabel: null,
               temp: c.temperature_2m,
@@ -248,7 +271,8 @@ export default function App() {
         const tipsText = situationalTips(
           d.precipitation_probability_max[0],
           d.temperature_2m_max[0],
-          alerts
+          alerts,
+          c.weather_code
         ).map(key => L.tips[key]).join('. ')
 
         const spokenSummary = `${loc.name}. ${
@@ -278,8 +302,8 @@ export default function App() {
         try {
           const { latitude, longitude, accuracy } = pos.coords
           console.log('Location accuracy (meters):', accuracy)
-          const name = await reverseGeocode(latitude, longitude)
-          await finishLocationFlow({ name, lat: latitude, lon: longitude })
+          const geo = await reverseGeocode(latitude, longitude)
+          await finishLocationFlow({ name: geo.name, lat: latitude, lon: longitude, state: geo.state })
         } catch (err) {
           console.error(err)
           fallbackToIP()
@@ -411,7 +435,11 @@ export default function App() {
 
       const dayAlerts = deriveAlerts(
         isToday ? c : { wind_speed_10m: 0, weather_code: selectedCode },
-        { precipitation_probability_max: [selectedRainChance], temperature_2m_max: [selectedTempMax] }
+        {
+          precipitation_probability_max: [selectedRainChance],
+          temperature_2m_max: [selectedTempMax],
+          precipitation_sum: [d.precipitation_sum[dayIndex]]
+        }
       )
 
       const dateLabel = new Date(`${d.time[dayIndex]}T00:00:00`).toLocaleDateString(undefined, {
@@ -427,6 +455,7 @@ export default function App() {
             name: loc.name,
             lat: loc.lat,
             lon: loc.lon,
+            state: loc.state,
             rainMm: isToday ? c.precipitation : null,
             dateLabel: isToday ? null : dateLabel,
             temp: isToday ? c.temperature_2m : selectedTempMax,
@@ -444,7 +473,7 @@ export default function App() {
         ? ` ${L.voice.warning}: ${dayAlerts.map(alert => L.alerts[alert.key]).join('. ')}.`
         : ''
 
-      const tipsText = situationalTips(selectedRainChance, selectedTempMax, dayAlerts).map(key => L.tips[key]).join('. ')
+      const tipsText = situationalTips(selectedRainChance, selectedTempMax, dayAlerts, selectedCode).map(key => L.tips[key]).join('. ')
       const forecastLabel = isToday ? '' : `${dateLabel}. `
 
       const spokenSummary = `${loc.name}. ${forecastLabel}${
@@ -604,23 +633,91 @@ export default function App() {
                       </div>
                     )}
 
+                    <div className="mb-2">
+                      <button
+                        onClick={() => setHelplineOpen(h => ({ ...h, [index]: !h[index] }))}
+                        className="text-xs text-red-700 dark:text-red-300 bg-red-500/10 dark:bg-red-500/20 border border-red-500/30 rounded-lg px-3 py-1.5 hover:bg-red-500/20 transition-colors"
+                      >
+                        📞 {L.helpline.button}
+                      </button>
+
+                      {helplineOpen[index] && (() => {
+                        const stateInfo = getHelplineForState(message.data.state)
+                        const info = stateInfo || nationalHelpline
+                        return (
+                          <div className="mt-1.5 text-xs bg-red-500/10 dark:bg-red-500/20 text-red-700 dark:text-red-300 border border-red-500/30 rounded-lg px-3 py-2">
+                            <div className="font-medium">{info.name}: {info.number}</div>
+                            {!stateInfo && (
+                              <div className="mt-1 text-[10px] opacity-80">
+                                {L.helpline.nationalWarning}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
+                    </div>
+
                     <div className="text-sm bg-sky-500/10 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300 rounded-lg px-3 py-2 mb-2">
                       {L.advisory[advisoryKey(message.data.rainChance, message.data.tempMax)]}
                     </div>
 
-                    {situationalTips(message.data.rainChance, message.data.tempMax, message.data.alerts || []).map((tipKey, tipIndex) => (
+                    {situationalTips(message.data.rainChance, message.data.tempMax, message.data.alerts || [], message.data.code).map((tipKey, tipIndex) => (
                       <div key={tipIndex} className="text-sm bg-sky-900/5 dark:bg-white/5 text-sky-700 dark:text-slate-300 rounded-lg px-3 py-2 mt-1.5">
                         💡 {L.tips[tipKey]}
                       </div>
                     ))}
 
                     {message.data.lat && (
-                      <button
-                        onClick={() => setMapFor(message.data)}
-                        className="mt-2 text-xs text-sky-600 dark:text-sky-300 bg-sky-900/5 dark:bg-white/5 hover:bg-sky-900/10 dark:hover:bg-white/10 rounded-lg px-3 py-1.5 transition-colors"
-                      >
-                        🗺️ Live map
-                      </button>
+                      <div className="flex gap-2 mt-2 flex-wrap">
+                        <button
+                          onClick={() => setMapFor(message.data)}
+                          className="text-xs text-sky-600 dark:text-sky-300 bg-sky-900/5 dark:bg-white/5 hover:bg-sky-900/10 dark:hover:bg-white/10 rounded-lg px-3 py-1.5 transition-colors"
+                        >
+                          🗺️ Live map
+                        </button>
+                        <button
+                          onClick={() => openTrendsForLocation({ name: message.data.name, lat: message.data.lat, lon: message.data.lon })}
+                          className="text-xs text-sky-600 dark:text-sky-300 bg-sky-900/5 dark:bg-white/5 hover:bg-sky-900/10 dark:hover:bg-white/10 rounded-lg px-3 py-1.5 transition-colors"
+                        >
+                          📊 Climate trends
+                        </button>
+                        <button
+                          onClick={() => handleMarineClick(index, message.data.lat, message.data.lon)}
+                          className="text-xs text-sky-600 dark:text-sky-300 bg-sky-900/5 dark:bg-white/5 hover:bg-sky-900/10 dark:hover:bg-white/10 rounded-lg px-3 py-1.5 transition-colors"
+                        >
+                          🌊 {L.marine.button}
+                        </button>
+                        <button
+                          onClick={() => setAgriOpen(o => ({ ...o, [index]: !o[index] }))}
+                          className="text-xs text-sky-600 dark:text-sky-300 bg-sky-900/5 dark:bg-white/5 hover:bg-sky-900/10 dark:hover:bg-white/10 rounded-lg px-3 py-1.5 transition-colors"
+                        >
+                          🌾 {L.agri.button}
+                        </button>
+                      </div>
+                    )}
+
+                    {marineOpen[index] && (
+                      <div className="mt-1.5 text-sm bg-sky-900/5 dark:bg-white/5 text-sky-700 dark:text-slate-300 rounded-lg px-3 py-2 leading-relaxed">
+                        {marineLoading[index] ? (
+                          L.thinking
+                        ) : marineData[index] ? (
+                          <>
+                            <div className="mb-1">{L.marine[marineSeverity(marineData[index].waveHeight)]}</div>
+                            <div className="text-xs text-sky-600 dark:text-slate-400">
+                              {L.marine.waveHeight}: {marineData[index].waveHeight} m
+                              {marineData[index].windWaveHeight !== null && ` · ${L.marine.windWaveHeight}: ${marineData[index].windWaveHeight} m`}
+                            </div>
+                          </>
+                        ) : (
+                          L.marine.notCoastal
+                        )}
+                      </div>
+                    )}
+
+                    {agriOpen[index] && (
+                      <div className="mt-1.5 text-sm bg-green-500/10 dark:bg-green-500/20 text-green-700 dark:text-green-300 rounded-lg px-3 py-2 leading-relaxed">
+                        {L.agri[agriAdvisoryKey(message.data.rainChance, message.data.tempMax, message.data.alerts || [])]}
+                      </div>
                     )}
                   </div>
                 ) : message.type === 'week' ? (
@@ -829,7 +926,7 @@ export default function App() {
                 </div>
 
                 <p className="text-xs text-sky-600 dark:text-slate-400 uppercase font-semibold mb-2">Month-by-month (past year)</p>
-                                <div className="flex items-end gap-1.5" style={{ height: '128px' }}>
+                <div className="flex items-end gap-1.5" style={{ height: '128px' }}>
                   {trendsData.months.map((m, i) => {
                     const maxRain = Math.max(...trendsData.months.map(x => x.rain), 1)
                     const barPx = Math.max((m.rain / maxRain) * 110, 2)

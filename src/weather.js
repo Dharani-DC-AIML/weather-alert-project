@@ -1,3 +1,4 @@
+// src/weather.js
 import { supabase } from './supabaseClient'
 
 export async function geocode(location) {
@@ -7,16 +8,21 @@ export async function geocode(location) {
   const data = await res.json()
   if (data.results && data.results.length > 0) {
     const r = data.results[0]
-    return { name: r.name, lat: r.latitude, lon: r.longitude }
+    return { name: r.name, lat: r.latitude, lon: r.longitude, state: r.admin1 || null }
   }
 
   const nomRes = await fetch(
-    `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}&limit=1`
+    `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(location)}&limit=1`
   )
   const nomData = await nomRes.json()
   if (nomData.length > 0) {
     const r = nomData[0]
-    return { name: r.display_name.split(',')[0], lat: parseFloat(r.lat), lon: parseFloat(r.lon) }
+    return {
+      name: r.display_name.split(',')[0],
+      lat: parseFloat(r.lat),
+      lon: parseFloat(r.lon),
+      state: r.address?.state || null
+    }
   }
 
   return null
@@ -29,13 +35,13 @@ export async function reverseGeocode(lat, lon) {
   const data = await res.json()
   const addr = data.address || {}
   const name = addr.suburb || addr.neighbourhood || addr.city_district || addr.town || addr.village || addr.city || data.display_name?.split(',')[0] || 'Current location'
-  return name
+  return { name, state: addr.state || null }
 }
 
 export async function getLocationByIP() {
   const res = await fetch('https://ipapi.co/json/')
   const data = await res.json()
-  return { name: data.city, lat: data.latitude, lon: data.longitude }
+  return { name: data.city, lat: data.latitude, lon: data.longitude, state: data.region || null }
 }
 
 export async function getWeather(lat, lon) {
@@ -48,10 +54,11 @@ export async function getWeather(lat, lon) {
 export function deriveAlerts(current, daily) {
   const alerts = []
   const rainAmount = daily.precipitation_sum ? daily.precipitation_sum[0] : 0
+  const rainChance = daily.precipitation_probability_max ? daily.precipitation_probability_max[0] : 0
 
-  if (rainAmount >= 64.5) {
+  if (rainAmount >= 115.6 || rainChance >= 90) {
     alerts.push({ severity: 'red', key: 'heavyRain' })
-  } else if (rainAmount >= 15) {
+  } else if (rainChance >= 80) {
     alerts.push({ severity: 'amber', key: 'moderateRain' })
   }
 
@@ -95,6 +102,7 @@ export async function getMonthlyHistoricalStats(lat, lon, month, yearsBack) {
 
   return results
 }
+
 export function rainCategory(mm) {
   if (mm > 204.4) return { color: '#8B008B', label: 'Extremely heavy', level: 1 }
   if (mm >= 115.6) return { color: '#E53E3E', label: 'Very heavy', level: 0.85 }
@@ -135,6 +143,7 @@ export async function getRainGrid(lat, lon) {
     rainMm: list[index]?.current?.precipitation ?? 0
   }))
 }
+
 const CACHE_FRESH_MS = 30 * 60 * 1000 // 30 minutes
 
 export async function getWeatherCached(loc) {
@@ -182,6 +191,7 @@ export async function getWeatherCached(loc) {
 
   return fresh
 }
+
 export async function getClimateTrends(lat, lon) {
   const end = new Date()
   end.setDate(end.getDate() - 2)
@@ -223,4 +233,23 @@ export async function getClimateTrends(lat, lon) {
   })
 
   return { avgHigh, avgLow, totalRain, hottestDay, months }
+}
+export async function getMarineAdvisory(lat, lon) {
+  try {
+    const res = await fetch(
+      `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}&current=wave_height,wind_wave_height&timezone=auto`
+    )
+    const data = await res.json()
+    const waveHeight = data.current?.wave_height
+    if (waveHeight === null || waveHeight === undefined) return null
+    return { waveHeight, windWaveHeight: data.current?.wind_wave_height ?? null }
+  } catch {
+    return null
+  }
+}
+
+export function marineSeverity(waveHeight) {
+  if (waveHeight >= 2.5) return 'avoid'
+  if (waveHeight >= 1.25) return 'caution'
+  return 'safe'
 }
